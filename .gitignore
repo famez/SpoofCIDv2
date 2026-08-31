@@ -1,3 +1,7 @@
 fp-info-cache
 *.kicad_prl
 *.lck
+.claude/
+*.bak
+*-backups/
+venv/
