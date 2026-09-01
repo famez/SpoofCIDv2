@@ -6762,7 +6762,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "CY8C4245AXI-483"
 			(at 143.51 119.38 0)
 			(effects
 				(font
@@ -7412,7 +7412,7 @@
 				)
 			)
 		)
-		(property "Value" "GREEN LED"
+		(property "Value" "YELLOW LED"
 			(at 149.86 170.4975 0)
 			(effects
 				(font
@@ -7438,7 +7438,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "https://www.mouser.es/es/ProductDetail/ams-OSRAM/LT-QH9G-Q2OO-25-2Z4Y?qs=sGAEpiMZZMvVL5Kk7ZYykXfqBMgOYn7ioHgXzDQYATznJayz6qE5vQ%3D%3D"
+		(property "Description" "16-213UYC/S530-A2/TR8"
 			(at 153.67 168.91 0)
 			(effects
 				(font
@@ -7582,7 +7582,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "https://www.mouser.es/es/ProductDetail/KYOCERA-AVX/KGM15BR50J225MT?qs=sGAEpiMZZMsh%252B1woXyUXj8kXu8%252BgW1qHFQ%252BDqnc0YP4%3D"
+		(property "Description" "CL10A225KP8NNNC"
 			(at 57.15 111.76 0)
 			(effects
 				(font
@@ -7794,7 +7794,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "https://www.mouser.es/es/ProductDetail/KYOCERA-AVX/KGM15BR50J225MT?qs=sGAEpiMZZMsh%252B1woXyUXj8kXu8%252BgW1qHFQ%252BDqnc0YP4%3D"
+		(property "Description" "CL10A225KP8NNNC"
 			(at 40.64 111.76 0)
 			(effects
 				(font
@@ -8133,7 +8133,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "https://www.mouser.es/es/ProductDetail/ROHM-Semiconductor/ESR01MZPF1002?qs=sGAEpiMZZMtlubZbdhIBICz%2FtfrlArmdvcFHa4aHROU%3D"
+		(property "Description" "0402WGJ0103TCE"
 			(at 123.19 82.55 0)
 			(effects
 				(font
@@ -8326,7 +8326,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 162.8648 97.79 0)
 			(effects
 				(font
@@ -8344,7 +8344,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "https://www.mouser.es/es/ProductDetail/TDK/C1005X5R1C155K050BC?qs=xLDY6iXSiQY59ZJMhfhKuQ%3D%3D"
+		(property "Description" "0603X155K6R3CT"
 			(at 163.83 101.6 0)
 			(effects
 				(font
@@ -8766,7 +8766,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "https://www.mouser.es/es/ProductDetail/KYOCERA-AVX/KGM15BR50J225MT?qs=sGAEpiMZZMsh%252B1woXyUXj8kXu8%252BgW1qHFQ%252BDqnc0YP4%3D"
+		(property "Description" "CL10A225KP8NNNC"
 			(at 124.46 35.56 0)
 			(effects
 				(font
@@ -8835,7 +8835,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "https://www.mouser.es/es/ProductDetail/ROHM-Semiconductor/ESR01MZPF1002?qs=sGAEpiMZZMtlubZbdhIBICz%2FtfrlArmdvcFHa4aHROU%3D"
+		(property "Description" "0402WGJ0103TCE"
 			(at 114.3 66.04 0)
 			(effects
 				(font
@@ -10233,7 +10233,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "100"
+		(property "Value" "220"
 			(at 156.21 161.2899 0)
 			(effects
 				(font
@@ -10260,7 +10260,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "https://www.mouser.es/es/ProductDetail/Vishay-Beyschlag/MCS04020C1000FE000?qs=sGAEpiMZZMtlubZbdhIBIMFZrYW9%252Bak76bOZ2aH2%2F7s%3D"
+		(property "Description" "CR0402-FX-2200GLF"
 			(at 153.67 160.02 0)
 			(effects
 				(font
