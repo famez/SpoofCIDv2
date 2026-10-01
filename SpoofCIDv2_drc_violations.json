@@ -1,0 +1,157 @@
+{
+  "board": "/home/fernando/git_spoof/SpoofCIDv2/SpoofCIDv2.kicad_pcb",
+  "timestamp": "2026-09-05T22:17:04+0200",
+  "total_violations": 14,
+  "violation_counts": {
+    "silk_overlap": 6,
+    "silk_over_copper": 7,
+    "silk_edge_clearance": 1
+  },
+  "severity_counts": {
+    "error": 0,
+    "warning": 14,
+    "info": 0
+  },
+  "violations": [
+    {
+      "type": "silk_overlap",
+      "severity": "warning",
+      "message": "Solapamiento de serigraf\u00eda",
+      "location": {
+        "x": 67.23,
+        "y": 57.825,
+        "unit": "mm"
+      }
+    },
+    {
+      "type": "silk_overlap",
+      "severity": "warning",
+      "message": "Solapamiento de serigraf\u00eda",
+      "location": {
+        "x": 67.94,
+        "y": 58.892164,
+        "unit": "mm"
+      }
+    },
+    {
+      "type": "silk_overlap",
+      "severity": "warning",
+      "message": "Solapamiento de serigraf\u00eda",
+      "location": {
+        "x": 68.66,
+        "y": 58.892164,
+        "unit": "mm"
+      }
+    },
+    {
+      "type": "silk_overlap",
+      "severity": "warning",
+      "message": "Solapamiento de serigraf\u00eda",
+      "location": {
+        "x": 69.46,
+        "y": 59.0,
+        "unit": "mm"
+      }
+    },
+    {
+      "type": "silk_overlap",
+      "severity": "warning",
+      "message": "Solapamiento de serigraf\u00eda",
+      "location": {
+        "x": 63.5,
+        "y": 52.95,
+        "unit": "mm"
+      }
+    },
+    {
+      "type": "silk_overlap",
+      "severity": "warning",
+      "message": "Solapamiento de serigraf\u00eda",
+      "location": {
+        "x": 63.5,
+        "y": 52.95,
+        "unit": "mm"
+      }
+    },
+    {
+      "type": "silk_over_copper",
+      "severity": "warning",
+      "message": "Serigraf\u00eda recortada por la m\u00e1scara del soldadura",
+      "location": {
+        "x": 67.23,
+        "y": 57.825,
+        "unit": "mm"
+      }
+    },
+    {
+      "type": "silk_over_copper",
+      "severity": "warning",
+      "message": "Serigraf\u00eda recortada por la m\u00e1scara del soldadura",
+      "location": {
+        "x": 69.46,
+        "y": 59.0,
+        "unit": "mm"
+      }
+    },
+    {
+      "type": "silk_over_copper",
+      "severity": "warning",
+      "message": "Serigraf\u00eda recortada por la m\u00e1scara del soldadura",
+      "location": {
+        "x": 68.36,
+        "y": 58.98,
+        "unit": "mm"
+      }
+    },
+    {
+      "type": "silk_over_copper",
+      "severity": "warning",
+      "message": "Serigraf\u00eda recortada por la m\u00e1scara del soldadura",
+      "location": {
+        "x": 63.5,
+        "y": 52.95,
+        "unit": "mm"
+      }
+    },
+    {
+      "type": "silk_over_copper",
+      "severity": "warning",
+      "message": "Serigraf\u00eda recortada por la m\u00e1scara del soldadura",
+      "location": {
+        "x": 69.07,
+        "y": 61.0,
+        "unit": "mm"
+      }
+    },
+    {
+      "type": "silk_over_copper",
+      "severity": "warning",
+      "message": "Serigraf\u00eda recortada por la m\u00e1scara del soldadura",
+      "location": {
+        "x": 71.5,
+        "y": 50.0,
+        "unit": "mm"
+      }
+    },
+    {
+      "type": "silk_over_copper",
+      "severity": "warning",
+      "message": "Serigraf\u00eda recortada por la m\u00e1scara del soldadura",
+      "location": {
+        "x": 68.5,
+        "y": 51.57,
+        "unit": "mm"
+      }
+    },
+    {
+      "type": "silk_edge_clearance",
+      "severity": "warning",
+      "message": "Serigraf\u00eda recortada por el borde de la placa",
+      "location": {
+        "x": 52.0,
+        "y": 40.0,
+        "unit": "mm"
+      }
+    }
+  ]
+}

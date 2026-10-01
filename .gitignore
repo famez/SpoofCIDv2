@@ -5,3 +5,13 @@ fp-info-cache
 *.bak
 *-backups/
 venv/
+
+# PSoC Creator build output
+psoc_creator/Design01.cydsn/CortexM0/
+psoc_creator/Design01.cydsn/*.svd
+psoc_creator/Design01.cydsn/*.rpt
+psoc_creator/Design01.cydsn/Design01_timing.html
+
+# firmware build artifacts
+firmware/**/*.elf
+firmware/**/*.hex
