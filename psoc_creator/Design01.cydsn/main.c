@@ -1,18 +1,49 @@
 #include <project.h>
 
-#define PRT4_DR  (*(volatile uint32 *)0x40040400u)
-#define LED_REQ  (1u << 2u)
-#define LED_RSP  (1u << 3u)
+#define SD_STATUS_REG   CY_GET_REG8(SD_CID_RESPONDER_1_StatusReg__STATUS_REG)
+#define SD_CAPTURE_REG  CY_GET_REG8(SD_CID_RESPONDER_1_CaptureReg__STATUS_REG)
 
-#define SD_STATUS_ADDR   SD_CID_RESPONDER_1_StatusReg__STATUS_REG   /* ST_00 = 0x400F0060 */
-#define SD_CTR_ADDR      SD_CID_RESPONDER_1_fifo_cnt_rd__STATUS_REG /* ST_03 = 0x400F0063 */
-#define SD_STATUS_REG    CY_GET_REG8(SD_STATUS_ADDR)
+#define R2_BYTES  17u   // R2 = 136 bits = 17 bytes
+
+static volatile uint8 g_buf[R2_BYTES];
+static volatile uint8 g_idx;
+static volatile uint8 g_cmd_type;   // 2 = CID, 9 = CSD
+static volatile uint8 g_cmd_ready;  // nuevo comando detectado
+static volatile uint8 g_data_ready; // 17 bytes capturados
 
 static void uart_hex8(uint8 v)
 {
     const char hex[] = "0123456789ABCDEF";
     UART_1_UartPutChar((uint32)hex[v >> 4u]);
     UART_1_UartPutChar((uint32)hex[v & 0x0Fu]);
+}
+
+// ISR: DBG0 — CMD2/CMD9 detectado (fase COMMAND, host→tarjeta)
+// Los ISR deben ser mínimos: solo flags y LEDs, NUNCA UART
+CY_ISR(SD_CMD_ISR_Handler)
+{
+    uint8 sta = SD_STATUS_REG;
+    g_cmd_type  = (sta & 0x01u) ? 2u : 9u;
+    g_idx       = 0u;
+    g_data_ready = 0u;
+    g_cmd_ready  = 1u;
+    LED_REQ_Write(1u);   // host transmite
+    LED_RSP_Write(0u);
+}
+
+// ISR: DBG1 — byte capturado listo (fase RESPONSE, tarjeta→host)
+CY_ISR(SD_BYTE_ISR_Handler)
+{
+    if (g_idx < R2_BYTES)
+        g_buf[g_idx++] = SD_CAPTURE_REG;
+
+    if (g_idx == 1u) {
+        LED_REQ_Write(0u);   // fin fase COMMAND
+        LED_RSP_Write(1u);   // inicio fase RESPONSE
+    }
+
+    if (g_idx >= R2_BYTES)
+        g_data_ready = 1u;
 }
 
 int main(void)
@@ -22,28 +53,32 @@ int main(void)
     UART_1_Start();
     UART_1_UartPutString("SpoofCIDv2 monitor ready\r\n");
 
-    UART_1_UartPutString("STATUS_ADDR=0x");
-    uart_hex8((uint8)(SD_STATUS_ADDR >> 24u));
-    uart_hex8((uint8)(SD_STATUS_ADDR >> 16u));
-    uart_hex8((uint8)(SD_STATUS_ADDR >>  8u));
-    uart_hex8((uint8)(SD_STATUS_ADDR));
-    UART_1_UartPutString("\r\n");
+    SD_CMD_ISR_StartEx(SD_CMD_ISR_Handler);
+    SD_BYTE_ISR_StartEx(SD_BYTE_ISR_Handler);
 
     for (;;) {
-        uint8 sta = SD_STATUS_REG;
+        __asm("wfi");
 
-        if (sta & 0x01u) {
-            UART_1_UartPutString("CMD2 ALL_SEND_CID\r\n");
-            PRT4_DR |= LED_REQ;
-            while (SD_STATUS_REG & 0x01u) {}
-            PRT4_DR &= ~LED_REQ;
+        if (g_cmd_ready) {
+            g_cmd_ready = 0u;
+            UART_1_UartPutString(g_cmd_type == 2u
+                ? "CMD2 ALL_SEND_CID\r\n"
+                : "CMD9 SEND_CSD\r\n");
         }
 
-        if (sta & 0x02u) {
-            UART_1_UartPutString("CMD9 SEND_CSD\r\n");
-            PRT4_DR |= LED_RSP;
-            while (SD_STATUS_REG & 0x02u) {}
-            PRT4_DR &= ~LED_RSP;
+        if (g_data_ready) {
+            g_data_ready = 0u;
+
+            // byte 0 = header 0x3F (start+dir+cmd_index), bytes 1-16 = CID/CSD
+            UART_1_UartPutString(g_cmd_type == 2u ? "CID: " : "CSD: ");
+            for (uint8 i = 1u; i < R2_BYTES; i++) {
+                uart_hex8(g_buf[i]);
+                UART_1_UartPutChar(' ');
+            }
+            UART_1_UartPutString("\r\n");
+
+            CyDelay(200u);
+            LED_RSP_Write(0u);
         }
     }
 }
