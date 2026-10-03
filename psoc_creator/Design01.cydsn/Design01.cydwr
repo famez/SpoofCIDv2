@@ -15,6 +15,8 @@
       <Data key="8d318d8b-cf7b-4b6b-b02c-ab1c5c49d0ba" value="HOST_CLK" />
       <Data key="9f6535e2-f5da-4217-8130-aa7f35854743" value="rx" />
       <Data key="b7adbaa1-6a53-42e1-b6ff-d705a7f378e7" value="SD_CMD" />
+      <Data key="c7a87eea-e7b5-4e5e-ac50-9119b0e20fb7" value="LED_RSP" />
+      <Data key="d7ea2ff3-13b3-4c39-96d4-897ca6627fb6" value="LED_REQ" />
       <Data key="e851a3b9-efb8-48be-bbb8-b303b216c393" value="tx" />
     </Group>
   </Group>
@@ -1235,11 +1237,32 @@
         <Data key="Port Format" value="2,2" />
       </Group>
     </Group>
+    <Group key="9f6535e2-f5da-4217-8130-aa7f35854743">
+      <Group key="0">
+        <Data key="Port Format" value="4,0" />
+      </Group>
+    </Group>
     <Group key="b7adbaa1-6a53-42e1-b6ff-d705a7f378e7">
       <Group key="0">
         <Data key="Port Format" value="2,3" />
       </Group>
     </Group>
+    <Group key="c7a87eea-e7b5-4e5e-ac50-9119b0e20fb7">
+      <Group key="0">
+        <Data key="Port Format" value="4,3" />
+      </Group>
+    </Group>
+    <Group key="d7ea2ff3-13b3-4c39-96d4-897ca6627fb6">
+      <Group key="0">
+        <Data key="Port Format" value="4,2" />
+      </Group>
+    </Group>
+    <Group key="e851a3b9-efb8-48be-bbb8-b303b216c393">
+      <Group key="0">
+        <Data key="Port Format" value="4,1" />
+      </Group>
+    </Group>
+    <Group key="UnAssigned Pins" />
   </Group>
   <Group key="PlaceDir">
     <Data key="count" value="0" />
