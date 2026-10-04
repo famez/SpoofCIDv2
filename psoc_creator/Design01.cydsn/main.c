@@ -25,10 +25,14 @@ static void uart_hex8(uint8 v)
 
 static void uart_buf(const volatile uint8 *buf, uint8 n)
 {
-    for (uint8 i = 0u; i < n; i++) {
-        uart_hex8(buf[i]);
+    // Los 16 bytes capturados tienen un prefijo de 6 bits del header R2 (111111).
+    // LinuxByte[i] = (buf[i] << 6) | (buf[i+1] >> 2) alinea al formato estándar.
+    for (uint8 i = 0u; i < n - 1u; i++) {
+        uart_hex8((uint8)((buf[i] << 6u) | (buf[i + 1u] >> 2u)));
         UART_1_UartPutChar(' ');
     }
+    // Último byte: solo quedan los 2 bits capturados; los 6 LSBs (CRC/end) no se capturaron
+    uart_hex8((uint8)(buf[n - 1u] << 6u));
     UART_1_UartPutString("\r\n");
 }
 
