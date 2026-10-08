@@ -154,16 +154,32 @@ CY_ISR(BYTE_REQ_ISR_Handler)
         SD_DATA_WRITE(g_frame[g_tx_idx]);   // refresca D0 para la próxima carga
         g_tx_idx++;
     } else {
-        // Ya entregados los 16 bytes (1..16). Desarmar AQUÍ es lo que termina
-        // la TX: el UDB acaba de desplazar frame[16] y en la siguiente carga
-        // (ctr==133, 8 ciclos después) ve tx_arm=0 y suelta el bus. Si el ISR
-        // llegara tarde se repetiría un byte. NO tocar det_clr aquí: truncaría
-        // el último byte. El main loop lo limpia tras ver tx_run=0.
+        // Ya entregados los 16 bytes (1..16). El UDB suelta el bus solo al
+        // final del bit 135; desarmar evita que arranque en otra R2.
         g_ctrl &= (uint8)~CT_TX_ARM;        // desarmar (no corta el byte en curso)
         ctrl_commit();
         BYTE_REQ_ISR_Disable();
         g_tx_done = 1u;
     }
+}
+
+// ---------------------------------------------------------------------------
+// emergency_clear — sólo si el UDB no terminó solo (p. ej. el host dejó de dar
+// reloj a mitad de trama). det_clr actúa en un flanco de HOST_CLK: mantenerlo
+// hasta ver IDLE y active=0 (o timeout si no hay reloj en absoluto).
+// ---------------------------------------------------------------------------
+static void emergency_clear(void)
+{
+    uint8 guard = 0u;
+
+    g_ctrl = CT_DET_CLR;                // también desarma
+    ctrl_commit();
+    while (((SD_STATUS & (ST_STATE_MSK | ST_ACTIVE)) != 0u) && (guard < 50u)) {
+        CyDelayUs(1u);
+        guard++;
+    }
+    g_ctrl = 0u;
+    ctrl_commit();
 }
 
 int main(void)
@@ -195,33 +211,19 @@ int main(void)
             uint16 guard = 0u;
             uint8  missed = g_missed;
 
-            if (missed != 0u) {
-                // Respuesta real en curso sin fin observable: esperar a que
-                // acabe (136 bits a >=100 kHz < 1.4 ms) antes de limpiar.
-                CyDelayUs(1500u);
-            } else {
-                // Esperar a que el UDB termine los 136 bits (tx_run=0). Timeout
-                // por si el host dejara de relojear.
-                while (((SD_STATUS & ST_TX_RUN) != 0u) && (guard < 2000u)) {
-                    CyDelayUs(1u);
-                    guard++;
-                }
-            }
-
-            // Pulso det_clr: limpia detección y FSM a IDLE, luego se suelta.
-            // Es urgente: el host manda el siguiente comando tras sólo Nrc=8
-            // ciclos (20 us a 400 kHz) y la FSM debe estar en IDLE para verlo.
-            // det_clr sólo actúa en un flanco de HOST_CLK: mantenerlo hasta que
-            // el UDB confirme IDLE y active=0 (timeout por si no hay reloj).
-            g_ctrl |= CT_DET_CLR;
-            ctrl_commit();
-            guard = 0u;
-            while (((SD_STATUS & (ST_STATE_MSK | ST_ACTIVE)) != 0u) && (guard < 50u)) {
+            // El UDB termina solo: al final de la R2 (bit 135) suelta el bus
+            // (tx_run=0), vuelve a IDLE y limpia active. Esperar a verlo antes
+            // de rehabilitar CMD_DET (que es por nivel de active). También vale
+            // para el caso "tarde": la R2 real acaba igual.
+            // Timeout (136 bits a 100 kHz = 1.36 ms) por si el host dejara de
+            // relojear: entonces reset de emergencia con det_clr.
+            while (((SD_STATUS & (ST_ACTIVE | ST_TX_RUN)) != 0u) && (guard < 3000u)) {
                 CyDelayUs(1u);
                 guard++;
             }
-            g_ctrl &= (uint8)~CT_DET_CLR;
-            ctrl_commit();
+            if (guard >= 3000u) {
+                emergency_clear();
+            }
 
             // Rearmar la detección ANTES de imprimir: UartPutString puede
             // bloquear ~2 ms y el siguiente CMD2/CMD9 llegaría con el ISR off.
@@ -241,6 +243,18 @@ int main(void)
                                               : "CMD9: inyectado SPOOF_CSD\r\n");
                 LED_RSP_Write(0u);
             }
+        } else if (((g_ctrl & CT_TX_ARM) != 0u) && ((SD_STATUS & ST_ACTIVE) == 0u)) {
+            // Armado pero el UDB ya no tiene detección: el host mandó otro
+            // comando sin que llegara la respuesta a CMD2/CMD9 (el UDB limpia
+            // active al empezar un comando nuevo). Abortar y volver a escuchar.
+            g_ctrl &= (uint8)~CT_TX_ARM;
+            ctrl_commit();
+            g_tx_idx = 0u;
+            CMD_DET_ISR_Enable();
+
+            LED_REQ_Write(0u);
+            UART_1_UartPutString(g_is_cid ? "CMD2: sin respuesta, abortado\r\n"
+                                          : "CMD9: sin respuesta, abortado\r\n");
         }
     }
 }
