@@ -14,9 +14,11 @@
       <Data key="5dbd6ca7-24b5-444a-8a02-9225e0b83937" value="HOST_CMD" />
       <Data key="8d318d8b-cf7b-4b6b-b02c-ab1c5c49d0ba" value="HOST_CLK" />
       <Data key="9f6535e2-f5da-4217-8130-aa7f35854743" value="rx" />
-      <Data key="b7adbaa1-6a53-42e1-b6ff-d705a7f378e7" value="SD_CMD" />
+      <Data key="26a41611-45e9-4763-a021-43a6ee0285b4" value="SW_IN" />
+      <Data key="b7adbaa1-6a53-42e1-b6ff-d705a7f378e7" value="CARD_CMD" />
       <Data key="c7a87eea-e7b5-4e5e-ac50-9119b0e20fb7" value="LED_RSP" />
       <Data key="d7ea2ff3-13b3-4c39-96d4-897ca6627fb6" value="LED_REQ" />
+      <Data key="e14c2dfe-bc20-418f-89f1-4391f0bdd5d3" value="PSOC_CMD" />
       <Data key="e851a3b9-efb8-48be-bbb8-b303b216c393" value="tx" />
     </Group>
   </Group>
@@ -1242,6 +1244,11 @@
         <Data key="Port Format" value="4,0" />
       </Group>
     </Group>
+    <Group key="26a41611-45e9-4763-a021-43a6ee0285b4">
+      <Group key="0">
+        <Data key="Port Format" value="1,5" />
+      </Group>
+    </Group>
     <Group key="b7adbaa1-6a53-42e1-b6ff-d705a7f378e7">
       <Group key="0">
         <Data key="Port Format" value="2,3" />
@@ -1255,6 +1262,11 @@
     <Group key="d7ea2ff3-13b3-4c39-96d4-897ca6627fb6">
       <Group key="0">
         <Data key="Port Format" value="4,2" />
+      </Group>
+    </Group>
+    <Group key="e14c2dfe-bc20-418f-89f1-4391f0bdd5d3">
+      <Group key="0">
+        <Data key="Port Format" value="0,4" />
       </Group>
     </Group>
     <Group key="e851a3b9-efb8-48be-bbb8-b303b216c393">

@@ -1,108 +1,244 @@
 `include "cypress.v"
 
-// SD_CID_RESPONDER — UDB sniffer con captura CID/CSD e interrupciones
+// =============================================================================
+// SD_CID_RESPONDER — UDB spoofer de respuesta R2 (CID/CSD), versión mínima.
 //
-// Puertos de interrupción — conectar a componentes isr en TopDesign:
-//   DBG0  nivel alto mientras CMD2/CMD9 activo  → isr SD_CMD_ISR (Rising Edge)
-//   DBG1  pulso 1 ciclo cuando byte listo       → isr SD_BYTE_ISR (Rising Edge)
+// Estrategia (ver memoria del proyecto [[project-spoof-strategy]]):
+//   - CARD_CLK puenteado a HOST_CLK (bodge): la tarjeta recibe siempre reloj y
+//     completa su respuesta real aislada, avanzando su máquina de estados.
+//   - El byte 0 de toda R2 es 0x3F (idéntico real/spoof): lo conduce la tarjeta.
+//     El PSoC toma el bus en el bit 8 y conduce los bytes 1..16 (bits 8..135).
 //
-// Registros CPU (cyfitter.h tras Build):
-//   StatusReg   bit0=cmd2, bit1=cmd9, bits[3:2]=state (00=IDLE,01=start,10=RESP,11=CMD)
-//   fifo_cnt_rd posición de bit en trama actual (0..135 en R2)
-//   CaptureReg  último byte completo capturado de la respuesta R2
+// Reloj: toda la lógica corre con CLK (HFCLK 24 MHz, componente Clock en
+// TopDesign). HOST_CLK es una ENTRADA DE DATOS: se sincroniza (2 FF), se
+// detecta su flanco de subida y ese pulso habilita el reloj (UDB Clock/Enable)
+// del resto de la lógica, que así avanza una vez por ciclo de HOST_CLK, unos
+// 3-4 ciclos de CLK (~150 ns) después del flanco real. Sin relojes ruteados
+// desde pines no hay skew entre UDBs (violaciones de hold) ni cruces
+// asíncronos con los registros de la CPU. Válido para HOST_CLK <= ~2 MHz.
 //
-// Estructura respuesta R2 (136 bits = 17 bytes):
-//   byte 0  : 0b00111111  (start + dir + cmd_index)
-//   bytes 1-16: CID o CSD (128 bits de datos)
+// Optimización de recursos (caber en 32 macrocells / 64 P-terms del CY8C4245):
+//   - `ctr` de 6 bits: sólo necesita llegar a 45 (fin de comando). En RESPONSE
+//     se usa únicamente ctr[2:0] (fase de byte), así que puede desbordar.
+//   - El FIN de TX lo decide el firmware: tras entregar frame[16] desarma
+//     tx_arm; en la siguiente carga (ctr==133 ≡ fase 5) tx_run cae. No hay
+//     comparador de fin.
+//   - El registro de desplazamiento de TX vive en una DATAPATH (dp): desplaza
+//     dentro de un único bloque, sin cruzar UDBs. Con flip-flops en PLD el
+//     skew del reloj ruteado desde pin entre UDBs (~5 ns) provocaba una
+//     violación de hold (txsh_5→txsh_6). Además ahorra 8 macrocells.
+//   - Sin FFs de sincronización para tx_arm/det_clr: det_clr dura ~5 us
+//     (>=2 flancos) y tx_arm nunca cambia cerca de un punto de carga (se arma
+//     ~40 bits antes y se desarma ~8 bits antes).
+//   - Detección CMD2/CMD9 en dos etapas (match_r registrado, comprobado en
+//     ctr==7) para que ninguna ecuación pase de 12 entradas (evita splits).
+//   - Todas las salidas salen directas de un registro (sin macrocells comb.)
+//     y todo usa el flanco de subida (un solo reloj → mejor empaquetado).
 //
+// Mapa de ctr en la fase RESPONSE:  posición_de_bit = ctr + 2
+//   (bits 0,1 = start,dir los consumen las transiciones 00->01->10).
+//   bit 8 (primer contenido) ↔ ctr muestrea bit 7 en ctr==5.
+//   Las cargas de byte caen en ctr[2:0]==5  (ctr = 5,13,21,...,125,133).
+//
+// PUERTOS (Design01.cydwr / TopDesign):
+//   CLK (Clock HFCLK 24 MHz) in ·
+//   HOST_CLK P2[2] in · HOST_CMD P2[3] in · PSOC_CMD P0[4] out · SW_IN P1[5] out
+//   CMD_DET (int, nivel) · BYTE_REQ (int, pulso)
+// REGISTROS CPU:
+//   StatusReg bit0=active bit1=is9 (0=CMD2, 1=CMD9) [3:2]=state bit4=tx_run
+//   CtrlReg   bit0=tx_arm bit1=det_clr
+//   dp.D0     byte a transmitir (el firmware lo refresca en cada BYTE_REQ;
+//             registro SD_CID_RESPONDER_1_dp_u0__D0_REG)
+// =============================================================================
 
 module SD_CID_RESPONDER (
-    output CMD_OVERRIDE,    // fijo 0 — PSoC nunca conduce el bus
-    output CMD_OVERRIDE_N,  // fijo 1
-    input  HOST_CLK,        // reloj bus SD (P2[2])
-    input  SD_CMD,          // línea CMD (P2[3])
-    output HOST_CMD_DRIVE,  // fijo 1 (idle)
-    output DBG0,            // INT: nivel alto cuando CMD2/CMD9 activo
-    output DBG1             // INT: pulso 1 ciclo por byte capturado listo
+    input  CLK,
+    input  HOST_CLK,
+    input  HOST_CMD,
+    output PSOC_CMD,
+    output SW_IN,
+    output CMD_DET,
+    output BYTE_REQ
 );
 
-reg [1:0] state;    // 00=IDLE, 01=start, 10=RESPONSE, 11=COMMAND
-reg [7:0] ctr;      // posición de bit en trama
-reg [5:0] cmd;      // ventana deslizante 6 bits para detectar comando
-reg       cmd2;
-reg       cmd9;
-reg [7:0] shift;  // shift register captura bits de R2
-reg       dbg1_r; // DBG1 retrasado 1 ciclo: garantiza que CaptureReg (clk_n) ya latcheó
+// Punto de toma de bus: en el flanco en que el host muestrea el bit 7 (ctr==5)
+// se carga el byte y el bit 8 aparece en PSOC_CMD justo después. Ajustar ±1
+// en el osciloscopio si hace falta.
+localparam [2:0] LOAD_PHASE = 3'd5;   // ctr[2:0] en el que se carga cada byte
 
-wire clk_n      = ~HOST_CLK;
-wire active     = cmd2 | cmd9;
-wire byte_ready = (state == 2'b10) && active && (ctr[2:0] == 3'b111);
+// -----------------------------------------------------------------------------
+// Sincronización de HOST_CLK y habilitación de reloj
+// -----------------------------------------------------------------------------
+reg hclk_m, hclk_s, hclk_d;       // 2 FF de sincronización + 1 de retardo
+always @(posedge CLK) begin
+    hclk_m <= HOST_CLK;
+    hclk_s <= hclk_m;
+    hclk_d <= hclk_s;
+end
+wire hclk_rise = hclk_s & ~hclk_d; // 1 ciclo de CLK por flanco de subida
 
-wire [7:0] status_reg_out;
+wire clk_en;                       // CLK habilitado sólo en hclk_rise
+cy_psoc3_udb_clock_enable_v1_0 #(.sync_mode(`TRUE))
+    ClkEn (.clock_in(CLK), .enable(hclk_rise), .clock_out(clk_en));
 
-assign CMD_OVERRIDE   = 1'b0;
-assign CMD_OVERRIDE_N = 1'b1;
-assign HOST_CMD_DRIVE = 1'b1;
+// -----------------------------------------------------------------------------
+// Control/estado CPU
+// -----------------------------------------------------------------------------
+wire [7:0] ctrl;
+cy_psoc3_control #(.cy_force_order(`TRUE), .cy_init_value(8'b00000000))
+    CtrlReg (.control(ctrl));
+wire arm_s = ctrl[0];
+wire clr_s = ctrl[1];
 
-assign DBG0 = active;  // nivel: alto mientras CMD2/CMD9 activo
-assign DBG1 = dbg1_r; // byte_ready retrasado 1 ciclo → ISR lee CaptureReg ya actualizado
 
-assign status_reg_out[0]   = cmd2;
-assign status_reg_out[1]   = cmd9;
-assign status_reg_out[3:2] = state;
-assign status_reg_out[7:4] = 4'b0;
+// -----------------------------------------------------------------------------
+// FSM de framing + detección CMD2/CMD9
+// -----------------------------------------------------------------------------
+reg [1:0] state;      // 00=IDLE 01=start 10=RESPONSE 11=COMMAND
+reg [5:0] ctr;
+reg [5:0] cmd;
+reg       active;     // CMD2 o CMD9 detectado (nivel → CMD_DET)
+reg       is9;        // 0=CMD2 (CID), 1=CMD9 (CSD)
+reg       match_r;    // cmd==CMD2/CMD9 en el ciclo anterior
 
-// Ventana deslizante para detectar índice de comando
-always @(posedge HOST_CLK) begin
-    cmd <= {cmd[4:0], SD_CMD};
+always @(posedge clk_en) begin
+    cmd     <= {cmd[4:0], HOST_CMD};
+    match_r <= (cmd == 6'b000010) || (cmd == 6'b001001);
+    // is9 sigue al índice mientras no hay detección y se congela al detectar.
+    // En ctr==7 el bit 0 del índice ya se desplazó a cmd[1].
+    if (!active) is9 <= cmd[1];
 end
 
-// FSM de framing SD
-always @(posedge HOST_CLK)
-    case (state)
-    2'b00:
-        if (SD_CMD == 1'b0) state <= 2'b01;
-    2'b01:
-        if (SD_CMD == 1'b0) state <= 2'b10;   // respuesta tarjeta→host
-        else                state <= 2'b11;   // comando host→tarjeta
-    2'b10:
-        if (cmd2 || cmd9) begin
-            if (ctr == 8'b10000101) begin      // fin R2 (136 bits)
-                state <= 2'b00;
-                cmd2  <= 1'b0;
-                cmd9  <= 1'b0;
-            end
-        end else begin
-            if (ctr == 8'b101101) state <= 2'b00; // fin R1 (48 bits)
-        end
-    2'b11:
-        begin
-            if (ctr == 8'h06 && cmd == 6'b000010) cmd2 <= 1'b1; // CMD2
-            if (ctr == 8'h06 && cmd == 6'b001001) cmd9 <= 1'b1; // CMD9
-            if (ctr == 8'b101101) state <= 2'b00;
+always @(posedge clk_en)
+    if (clr_s) begin
+        state <= 2'b00; active <= 1'b0;
+    end else case (state)
+        2'b00: if (HOST_CMD == 1'b0) state <= 2'b01;
+        2'b01: state <= (HOST_CMD == 1'b0) ? 2'b10 : 2'b11;
+        // Respuesta normal (R1/R3/R6/R7, 48 bits): vuelve a IDLE sola.
+        // Respuesta a CMD2/CMD9 (R2, 136 bits): espera a det_clr del firmware.
+        2'b10: if (!active && ctr == 6'd45) state <= 2'b00;
+        2'b11: begin
+            // match_r refleja el índice completo (muestreado en ctr==6)
+            if (ctr == 6'd7 && match_r) active <= 1'b1;
+            if (ctr == 6'd45) state <= 2'b00;                    // fin comando
         end
     endcase
 
-// Contador de posición en trama
-always @(posedge HOST_CLK) begin
-    if (state[1] == 1'b0) ctr <= 8'b0;
-    else                  ctr <= ctr + 1;
+always @(posedge clk_en)
+    if (state[1] == 1'b0) ctr <= 6'b0;
+    else                  ctr <= ctr + 6'd1;
+
+assign CMD_DET = active;
+
+// -----------------------------------------------------------------------------
+// Serializador (reutiliza ctr). Datapath: A0 = registro de desplazamiento.
+//   cs_addr=0 (desplazar): A0 <= A0 << 1          so = A0[7]
+//   cs_addr=1 (cargar)   : A0 <= D0 (byte de CPU)  so = A0[7] (bit 0 del byte
+//                          anterior, que el host muestrea en ese mismo flanco)
+// En cada punto de carga tx_run se re-evalúa: sigue mientras el firmware
+// mantenga tx_arm. Tras desarmar, cae en la siguiente carga (bit 136).
+// -----------------------------------------------------------------------------
+reg       tx_run;
+reg       byte_req_r;
+wire      dp_so;
+
+wire load_now = (state == 2'b10) && (ctr[2:0] == LOAD_PHASE);
+wire go       = arm_s && active;
+
+cy_psoc3_dp8 #(.cy_dpconfig_a(
+{
+    `CS_ALU_OP_PASS, `CS_SRCA_A0, `CS_SRCB_D0,
+    `CS_SHFT_OP___SL, `CS_A0_SRC__ALU, `CS_A1_SRC_NONE,
+    `CS_FEEDBACK_DSBL, `CS_CI_SEL_CFGA, `CS_SI_SEL_CFGA,
+    `CS_CMP_SEL_CFGA, /*CFGRAM0: desplazar A0 a la izquierda*/
+    `CS_ALU_OP_PASS, `CS_SRCA_A0, `CS_SRCB_D0,
+    `CS_SHFT_OP___SL, `CS_A0_SRC___D0, `CS_A1_SRC_NONE,
+    `CS_FEEDBACK_DSBL, `CS_CI_SEL_CFGA, `CS_SI_SEL_CFGA,
+    `CS_CMP_SEL_CFGA, /*CFGRAM1: cargar A0 desde D0*/
+    `CS_ALU_OP_PASS, `CS_SRCA_A0, `CS_SRCB_D0,
+    `CS_SHFT_OP_PASS, `CS_A0_SRC_NONE, `CS_A1_SRC_NONE,
+    `CS_FEEDBACK_DSBL, `CS_CI_SEL_CFGA, `CS_SI_SEL_CFGA,
+    `CS_CMP_SEL_CFGA, /*CFGRAM2: no usado*/
+    `CS_ALU_OP_PASS, `CS_SRCA_A0, `CS_SRCB_D0,
+    `CS_SHFT_OP_PASS, `CS_A0_SRC_NONE, `CS_A1_SRC_NONE,
+    `CS_FEEDBACK_DSBL, `CS_CI_SEL_CFGA, `CS_SI_SEL_CFGA,
+    `CS_CMP_SEL_CFGA, /*CFGRAM3: no usado*/
+    `CS_ALU_OP_PASS, `CS_SRCA_A0, `CS_SRCB_D0,
+    `CS_SHFT_OP_PASS, `CS_A0_SRC_NONE, `CS_A1_SRC_NONE,
+    `CS_FEEDBACK_DSBL, `CS_CI_SEL_CFGA, `CS_SI_SEL_CFGA,
+    `CS_CMP_SEL_CFGA, /*CFGRAM4: no usado*/
+    `CS_ALU_OP_PASS, `CS_SRCA_A0, `CS_SRCB_D0,
+    `CS_SHFT_OP_PASS, `CS_A0_SRC_NONE, `CS_A1_SRC_NONE,
+    `CS_FEEDBACK_DSBL, `CS_CI_SEL_CFGA, `CS_SI_SEL_CFGA,
+    `CS_CMP_SEL_CFGA, /*CFGRAM5: no usado*/
+    `CS_ALU_OP_PASS, `CS_SRCA_A0, `CS_SRCB_D0,
+    `CS_SHFT_OP_PASS, `CS_A0_SRC_NONE, `CS_A1_SRC_NONE,
+    `CS_FEEDBACK_DSBL, `CS_CI_SEL_CFGA, `CS_SI_SEL_CFGA,
+    `CS_CMP_SEL_CFGA, /*CFGRAM6: no usado*/
+    `CS_ALU_OP_PASS, `CS_SRCA_A0, `CS_SRCB_D0,
+    `CS_SHFT_OP_PASS, `CS_A0_SRC_NONE, `CS_A1_SRC_NONE,
+    `CS_FEEDBACK_DSBL, `CS_CI_SEL_CFGA, `CS_SI_SEL_CFGA,
+    `CS_CMP_SEL_CFGA, /*CFGRAM7: no usado*/
+    8'hFF, 8'h00,  /*CFG9*/
+    8'hFF, 8'hFF,  /*CFG11-10*/
+    `SC_CMPB_A1_D1, `SC_CMPA_A1_D1, `SC_CI_B_ARITH,
+    `SC_CI_A_ARITH, `SC_C1_MASK_DSBL, `SC_C0_MASK_DSBL,
+    `SC_A_MASK_DSBL, `SC_DEF_SI_1, `SC_SI_B_DEFSI,
+    `SC_SI_A_DEFSI, /*CFG13-12: shift-in = 1 (idle)*/
+    `SC_A0_SRC_ACC, `SC_SHIFT_SL, 1'h0,
+    1'h0, `SC_FIFO1_BUS, `SC_FIFO0_BUS,
+    `SC_MSB_DSBL, `SC_MSB_BIT0, `SC_MSB_NOCHN,
+    `SC_FB_NOCHN, `SC_CMP1_NOCHN,
+    `SC_CMP0_NOCHN, /*CFG15-14: shift-out = MSB*/
+    10'h00, `SC_FIFO_CLK__DP, `SC_FIFO_CAP_AX,
+    `SC_FIFO_LEVEL, `SC_FIFO__SYNC, `SC_EXTCRC_DSBL,
+    `SC_WRK16CAT_DSBL /*CFG17-16*/
+}), .d0_init_a(8'hFF), .a0_init_a(8'hFF)) dp (
+    .reset(1'b0),
+    .clk(clk_en),
+    .cs_addr({2'b00, load_now}),
+    .route_si(1'b0),
+    .route_ci(1'b0),
+    .f0_load(1'b0),
+    .f1_load(1'b0),
+    .d0_load(1'b0),
+    .d1_load(1'b0),
+    .ce0(), .cl0(), .z0(), .ff0(),
+    .ce1(), .cl1(), .z1(), .ff1(),
+    .ov_msb(), .co_msb(), .cmsb(),
+    .so(dp_so),
+    .f0_bus_stat(), .f0_blk_stat(),
+    .f1_bus_stat(), .f1_blk_stat()
+);
+
+always @(posedge clk_en) begin
+    byte_req_r <= load_now && go;            // pedir el siguiente byte a la CPU
+
+    if (clr_s)         tx_run <= 1'b0;
+    else if (load_now) tx_run <= go;
 end
 
-// Captura continua — shift siempre corre, CaptureReg solo se lee cuando byte_ready
-always @(posedge HOST_CLK)
-    shift <= {shift[6:0], SD_CMD};
+assign BYTE_REQ = byte_req_r;
 
-// dbg1_r: byte_ready del ciclo anterior.
-// En posedge ctr=8: CaptureReg ya latcheó el byte completo en el negedge de ctr=7.
-always @(posedge HOST_CLK) dbg1_r <= byte_ready;
+// Salida = shift-out de la datapath (A0[7]), que cambia ~150 ns después del
+// flanco de SUBIDA de HOST_CLK: el host muestrea el bit en la subida
+// siguiente (casi un periodo completo de setup y ~150 ns de hold).
+// Fuera de TX el valor es basura, pero SW_IN=0 aísla PSOC_CMD.
+assign PSOC_CMD = dp_so;
+assign SW_IN    = tx_run;
+
+// -----------------------------------------------------------------------------
+// Estado para la CPU
+// -----------------------------------------------------------------------------
+wire [7:0] status_reg_out;
+assign status_reg_out[0]   = active;
+assign status_reg_out[1]   = is9;
+assign status_reg_out[3:2] = state;
+assign status_reg_out[4]   = tx_run;
+assign status_reg_out[7:5] = 3'b0;
 
 cy_psoc3_status #(.cy_force_order(`TRUE), .cy_md_select(8'b00000000))
-    StatusReg  (.status(status_reg_out), .reset(1'b0), .clock(clk_n));
-
-// CaptureReg latchea shift en clk_n (negedge entre ctr=7 y ctr=8).
-// El ISR dispara en ctr=8 (via dbg1_r) → shift ya es estable.
-cy_psoc3_status #(.cy_force_order(`TRUE), .cy_md_select(8'b00000000))
-    CaptureReg (.status(shift),          .reset(1'b0), .clock(clk_n));
+    StatusReg (.status(status_reg_out), .reset(1'b0), .clock(CLK));
 
 endmodule
