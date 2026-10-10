@@ -1,4 +1,4 @@
---------------- Rebuild Started: 10/08/2026 22:31:56 Project: Design01, Configuration: ARM GCC 5.4-2016-q2-update Debug ---------------
+--------------- Rebuild Started: 10/10/2026 13:57:00 Project: Design01, Configuration: ARM GCC 5.4-2016-q2-update Debug ---------------
 Deleting file ".\CortexM0\ARM_GCC_541\Debug\main.o"
 Deleting file ".\CortexM0\ARM_GCC_541\Debug\cyfitter_cfg.o"
 Deleting file ".\CortexM0\ARM_GCC_541\Debug\cymetadata.o"
@@ -106,6 +106,6 @@ No ELF section .cychecksum found, creating one
 Application checksum calculated and stored in ELF section .cychecksum
 Checksum calculated and stored in ELF section .cymeta
 cyelftool.exe -S Z:\Design01.cydsn\CortexM0\ARM_GCC_541\Debug\Design01.elf
-Flash used: 4072 of 32768 bytes (12,4 %).
+Flash used: 4152 of 32768 bytes (12,7 %).
 SRAM used: 1592 of 4096 bytes (38,9 %). Stack: 1024 bytes. Heap: 128 bytes.
---------------- Rebuild Succeeded: 10/08/2026 22:32:34 ---------------
+--------------- Rebuild Succeeded: 10/10/2026 13:58:12 ---------------

@@ -52,7 +52,14 @@
 }
 // MID=0x1B (Samsung), OID="SM", PNM="SD32G", PRV=8.0, PSN=0xDEADBEEF, MDT=Jan 2023
 
+// CID real de la tarjeta de pruebas (leído con el monitor), por si hace falta:
+//    0xADu, 0x4Cu, 0x53u, 0x4Du, 0x53u, 0x4Cu, 0x30u, 0x20u,
+//    0x10u, 0x41u, 0x02u, 0x3Au, 0xEEu, 0x01u, 0x99u, 0x00u
+// MID=0xAD, OID="LS", PNM="MSL0 ", PRV=1.0, PSN=0x41023AEE, MDT=Sep 2025
+
 // CSD tipo 1 — ajustar según capacidad/tarjeta objetivo. El byte 15 (CRC) se recalcula.
+// SPOOF_CSD_ENABLE=0: en CMD9 no se toma el bus y pasa el CSD real (PRUEBA).
+#define SPOOF_CSD_ENABLE  0u
 #define SPOOF_CSD { \
     0x40u, 0x0Eu, 0x00u, 0x32u, 0x5Bu, 0x59u, 0x00u, 0x00u, \
     0x1Du, 0x40u, 0x00u, 0x00u, 0x00u, 0x00u, 0x81u, 0x00u  \
@@ -70,6 +77,7 @@ static volatile uint8 g_tx_idx;           // índice del próximo byte a entrega
 static volatile uint8 g_tx_done;          // 1 cuando termina la inyección
 static volatile uint8 g_is_cid;           // 1=se inyectó CID (CMD2), 0=CSD (CMD9)
 static volatile uint8 g_missed;          // 1=CMD_DET llegó tarde, no se inyectó
+static volatile uint8 g_skipped;         // 1=CMD9 con spoof de CSD desactivado
 
 static void ctrl_commit(void)
 {
@@ -85,8 +93,10 @@ static uint8 crc7_compute(const uint8 *data, uint8 len)
     for (uint8 i = 0u; i < len; i++) {
         uint8 b = data[i];
         for (uint8 j = 0u; j < 8u; j++) {
-            if (((b ^ crc) & 0x80u) != 0u) crc = (uint8)((crc << 1u) ^ 0x09u);
-            else                            crc = (uint8)(crc << 1u);
+            // crc guarda los 7 bits en [6:0]: tras desplazar, su MSB queda en
+            // bit 7 y se compara con el bit de datos entrante.
+            crc = (uint8)(crc << 1u);
+            if (((b ^ crc) & 0x80u) != 0u) crc ^= 0x09u;
             b <<= 1u;
         }
     }
@@ -123,6 +133,14 @@ CY_ISR(CMD_DET_ISR_Handler)
     CMD_DET_ISR_Disable();
 
     g_is_cid = (st & ST_IS9) ? 0u : 1u;
+
+    // Spoof de CSD desactivado: no armar; el UDB deja pasar la R2 real y
+    // limpia active al terminarla. El main loop rehabilita CMD_DET.
+    if ((g_is_cid == 0u) && (SPOOF_CSD_ENABLE == 0u)) {
+        g_skipped = 1u;
+        g_tx_done = 1u;
+        return;
+    }
 
     // Si la respuesta ya empezó, armar ahora haría que el UDB arrancase en una
     // carga posterior (bits desalineados). Dejar pasar la respuesta real.
@@ -210,6 +228,7 @@ int main(void)
         if (g_tx_done != 0u) {
             uint16 guard = 0u;
             uint8  missed = g_missed;
+            uint8  skipped = g_skipped;
 
             // El UDB termina solo: al final de la R2 (bit 135) suelta el bus
             // (tx_run=0), vuelve a IDLE y limpia active. Esperar a verlo antes
@@ -229,12 +248,15 @@ int main(void)
             // bloquear ~2 ms y el siguiente CMD2/CMD9 llegaría con el ISR off.
             g_tx_idx  = 0u;
             g_missed  = 0u;
+            g_skipped = 0u;
             g_tx_done = 0u;
             BYTE_REQ_ISR_Enable();
             CMD_DET_ISR_Enable();
 
             LED_REQ_Write(0u);
-            if (missed != 0u) {
+            if (skipped != 0u) {
+                UART_1_UartPutString("CMD9: CSD real (spoof desactivado)\r\n");
+            } else if (missed != 0u) {
                 UART_1_UartPutString(g_is_cid ? "CMD2: CMD_DET tarde, NO inyectado\r\n"
                                               : "CMD9: CMD_DET tarde, NO inyectado\r\n");
             } else {
